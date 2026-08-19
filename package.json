@@ -1,0 +1,51 @@
+{
+  "name": "pi-hexhub",
+  "version": "0.1.0",
+  "description": "Optimized HexHub MCP integration for Pi with progressive tool disclosure and Windows/WSL support",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "hexhub",
+    "mcp",
+    "ssh",
+    "docker",
+    "database",
+    "redis"
+  ],
+  "files": [
+    "extensions",
+    "README.md",
+    "DESIGN.md"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "check": "npm run typecheck && npm test"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/hexhub/index.ts"
+    ]
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "^0.84.2",
+    "@earendil-works/pi-coding-agent": "^0.84.2",
+    "@types/node": "^24.12.0",
+    "typebox": "^1.3.7",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
