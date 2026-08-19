@@ -1,8 +1,31 @@
 # pi-Hexhub
 
-`pi-Hexhub` 是面向 [Pi](https://github.com/badlogic/pi-mono) 的 HexHub MCP 扩展。它不是原样转发 MCP 目录，而是针对 HexHub 的资产、权限和 Windows/WSL 运行方式提供：
+> 基于 HexHub 原生 MCP 的 Pi 专用优化层：保留 HexHub 服务端能力、权限和确认机制，同时解决直接 MCP 桥接的上下文开销、资产标识暴露、结果噪声及 Windows/WSL 可达性问题。
 
-- 24 项静态审查工具目录，服务端 `tools/list` 只作为当前权限和兼容性事实源；
+`pi-Hexhub` 直接使用 HexHub 提供的 Streamable HTTP MCP endpoint，不复制、不替换也不修改 HexHub 后端。扩展通过官方 MCP SDK 调用原始工具，在 Pi 客户端侧增加经过审查的 schema、输入适配、渐进式披露、结果处理和跨平台 transport。
+
+它不是把 `tools/list` 原样注册到 Pi。基于 HexHub `5.3.9` 的实测，当前权限下原始 MCP 一次暴露 23 项工具，完整定义共 **29,181 字符，约 7,296 tokens**。`pi-Hexhub` 初始只向模型暴露 `hexhub_tools` 和 `hexhub_assets`，定义共 **704 字符，约 176 tokens**，初始工具上下文减少 **97.59%**；其余能力按任务动态加载。
+
+## 相比直接 MCP 桥接的优化
+
+| 维度 | 直接桥接原始 MCP | pi-Hexhub 优化 |
+| --- | --- | --- |
+| 工具上下文 | 一次注入当前 23 项完整 schema，约 7,296 tokens | 初始 2 项、约 176 tokens，按 SSH、文件、Docker、数据库等任务逐组激活 |
+| 工具目录 | `tools/list` 返回什么就暴露什么，新工具可能未经客户端审查直接进入模型上下文 | 本地审查 24 项已知工具；服务端目录只决定权限与兼容性，未知工具仅报告、不自动开放 |
+| 权限变化 | 通常只在连接时读取目录，运行中容易保留已撤销工具 | 重连和目录刷新后重新计算 active set；权限撤销、工具消失或 schema 不兼容会立即停用对应工具 |
+| 资产选择 | 模型直接处理不透明 `asset_ref`、容器内部 ID 和路由字段 | `list_assets` 结果转成会话级短资产键和容器键；调用前在本地解析，内部标识不进入模型 schema |
+| HexHub 领域适配 | 模型需要自行理解每项原始 schema 和资产类型差异 | 针对 SSH、远程文件、Docker、数据库、Redis、SCP、tunnel 和交互终端提供固定分组、简化参数和输入校验 |
+| 文件修改 | 原始写工具可被直接调用 | `write/edit/multi_edit/delete` 要求同一连接代内先读取同一目标，并按资产、容器和路径串行执行 |
+| 工具结果 | 原始 JSON、日志、SQL 行和终端输出可能重复、过长或泄露内部字段 | 按领域选择 head/tail、表格化和分页窗口，实施单工具预算、50 KiB/2000 行总上限及深度脱敏 |
+| Windows/WSL | WSL 通常无法直连仅监听 Windows `127.0.0.1` 的 HexHub MCP 和 SSH tunnel | 自动使用流式 PowerShell `HttpClient` helper；SCP 路径经安全 `wslpath` 转换；Windows tunnel 映射为 WSL 本地 bridge |
+| MCP 生命周期 | 通用桥常缺少针对 HexHub session 的恢复和运行时重配置 | single-flight 连接、generation 隔离、失效 session 单次恢复、取消传播、运行时 `/hexhub-config` 重连和有界关闭 |
+| 安全边界 | 项目配置可能改变 endpoint 或把凭据发送到其他地址 | URL/token 仅允许全局配置；受信项目只能配置初始工具组；远端必须 HTTPS，凭据不进入命令参数或诊断输出 |
+
+这些优化全部位于 Pi 扩展侧。最终工具执行、资产授权、Docker 控制确认、非查询 SQL 确认、Redis 写命令确认等仍由 **原始 HexHub MCP 服务端**负责，扩展不会绕过或模拟 HexHub 的权限判断。
+
+## 核心能力
+
+- 24 项静态审查工具目录，服务端 `tools/list` 作为当前权限和 schema 兼容性的事实源；
 - 渐进式工具激活，初始只暴露 `hexhub_tools` 与 `hexhub_assets`；
 - 会话内短资产键与容器键，不向模型显示 `asset_ref`、内部资产 ID 或路由字段；
 - SSH、远程文件、Docker、数据库、Redis、SCP、SSH tunnel 和交互终端支持；
@@ -10,7 +33,7 @@
 - 按领域压缩、截断和脱敏的工具结果；
 - 运行时 `/hexhub-config` 配置、测试、重连和工具管理。
 
-完整设计与安全边界见 [DESIGN.md](./DESIGN.md)。
+完整设计、协议基线和安全边界见 [DESIGN.md](./DESIGN.md)。
 
 ## 要求
 
