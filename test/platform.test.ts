@@ -33,6 +33,7 @@ const helperFetch = (async () => new Response("helper")) as FetchLike;
 const WSL = { platform: "linux" as const, isWindows: false, isWsl: true };
 const WINDOWS = { platform: "win32" as const, isWindows: true, isWsl: false };
 const LINUX = { platform: "linux" as const, isWindows: false, isWsl: false };
+const allowWindowsPath = async (): Promise<void> => {};
 
 test("detects Windows and WSL without trusting WSL variables on Windows", () => {
   assert.deepEqual(
@@ -172,10 +173,11 @@ test("WSL local path conversion uses one literal argv element and validates outp
   const hook = createHexHubLocalPathHook({
     platformInfo: WSL,
     commandSpawn: spawn,
+    windowsPathProbe: allowWindowsPath,
   });
   const supplied = "name; touch /tmp/not-run";
   const converted = await hook(supplied, { cwd: "/work", direction: "upload" });
-  assert.equal(converted, "D:\\work\\name; touch C:\\bad");
+  assert.equal(converted, "//?/D:/work/name; touch C:/bad");
   assert.equal(calls.length, 1);
   assert.equal(calls[0]?.command, "wslpath");
   assert.deepEqual(calls[0]?.args, ["-w", "--", `/work/${supplied}`]);
@@ -190,23 +192,55 @@ test("WSL local path conversion uses one literal argv element and validates outp
       cwd: "/work",
       direction: "download",
     }),
-    "C:\\Temp\\already.txt",
+    "//?/C:/Temp/already.txt",
   );
   assert.equal(calls.length, 1, "Windows absolute paths do not invoke wslpath");
 });
 
+test("WSL native paths become forward-slash UNC wire paths after preflight", async () => {
+  const spawn = (() => {
+    const child = new FakePowerShellChild();
+    queueMicrotask(() => {
+      child.stdout.write("\\\\wsl.localhost\\Ubuntu\\tmp\\file.txt\r\n");
+      child.close(0);
+    });
+    return child;
+  }) as unknown as PlatformCommandSpawn;
+  const probes: Array<{ path: string; direction: string }> = [];
+  const hook = createHexHubLocalPathHook({
+    platformInfo: WSL,
+    commandSpawn: spawn,
+    windowsPathProbe: async (path, context) => {
+      probes.push({ path, direction: context.direction });
+    },
+  });
+  assert.equal(
+    await hook("/tmp/file.txt", { cwd: "/work", direction: "download" }),
+    "//wsl.localhost/Ubuntu/tmp/file.txt",
+  );
+  assert.deepEqual(probes, [
+    {
+      path: "\\\\wsl.localhost\\Ubuntu\\tmp\\file.txt",
+      direction: "download",
+    },
+  ]);
+});
+
 test("local path conversion handles Windows relatives, invalid wslpath output, and abort", async () => {
-  const windowsHook = createHexHubLocalPathHook({ platformInfo: WINDOWS });
+  const windowsHook = createHexHubLocalPathHook({
+    platformInfo: WINDOWS,
+    windowsPathProbe: allowWindowsPath,
+  });
   assert.equal(
     await windowsHook("@folder\\file.txt", {
       cwd: "D:\\work",
       direction: "upload",
     }),
-    "D:\\work\\folder\\file.txt",
+    "//?/D:/work/folder/file.txt",
   );
   assert.equal(
     await windowsHook("C:\\raw.txt", { cwd: "D:\\work", direction: "upload" }),
-    "C:\\raw.txt",
+    "//?/C:/raw.txt",
   );
 
   const invalidSpawn = (() => {
@@ -220,6 +254,7 @@ test("local path conversion handles Windows relatives, invalid wslpath output, a
   const invalidHook = createHexHubLocalPathHook({
     platformInfo: WSL,
     commandSpawn: invalidSpawn,
+    windowsPathProbe: allowWindowsPath,
   });
   await assert.rejects(
     () =>
@@ -237,6 +272,7 @@ test("local path conversion handles Windows relatives, invalid wslpath output, a
   const abortingHook = createHexHubLocalPathHook({
     platformInfo: WSL,
     commandSpawn: hangingSpawn,
+    windowsPathProbe: allowWindowsPath,
   });
   const controller = new AbortController();
   const pending = abortingHook("file", {

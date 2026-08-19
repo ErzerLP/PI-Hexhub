@@ -178,6 +178,38 @@ test("deep redaction removes refs, asset ids, container ids, routes, and tokens"
   assert.doesNotMatch(JSON.stringify(output.details), /asset_ref|remoteArgs/);
 });
 
+test("SCP results distinguish queued work from completed transfers", () => {
+  const assets = registry();
+  const transfer = (status?: string, taskId = "task-12") =>
+    formatHexHubResult({
+      result: {
+        structuredContent: {
+          ...(status ? { status } : {}),
+          task_id: taskId,
+          asset_ref: "secret-ref-value",
+          asset_id: "secret-asset-id",
+        },
+      },
+      spec: spec("scp_transfer"),
+      registry: assets,
+      prepared: prepared({
+        remoteArgs: {
+          direction: "upload",
+          remote_path: "/tmp/result.txt",
+        },
+      }),
+    }).content[0].text;
+
+  assert.match(transfer("queued"), /queued.*not confirmed.*task_id=task-12/u);
+  assert.doesNotMatch(transfer("queued"), /completed/u);
+  assert.match(transfer("running"), /running.*not confirmed/u);
+  assert.match(transfer("completed"), /completed/u);
+  assert.match(transfer("failed"), /failed/u);
+  assert.match(transfer(), /accepted.*status is unknown/u);
+  assert.doesNotMatch(transfer("queued", "bad task id"), /task_id/u);
+  assert.doesNotMatch(transfer("queued"), /secret-ref|secret-asset/u);
+});
+
 test("every policy budget is below 50 KiB and 2000 lines with explicit truncation metadata", () => {
   const policies = [
     ...new Set(HEXHUB_TOOL_SPECS.map((item) => item.resultPolicy)),

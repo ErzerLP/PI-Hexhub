@@ -5,9 +5,17 @@ import { posix, resolve as resolvePath, win32 } from "node:path";
 import type { Readable, Writable } from "node:stream";
 
 import type { HexHubConfig } from "./contracts.js";
-import type { HexHubLocalPathHook } from "./input-adapters.js";
+import type {
+  HexHubLocalPathContext,
+  HexHubLocalPathHook,
+} from "./input-adapters.js";
 import type { FetchLike, HexHubFetchResolver } from "./mcp-client.js";
 import { probePowerShell, type PowerShellSpawn } from "./powershell.js";
+import {
+  canonicalHexHubWindowsScpPath,
+  encodeHexHubWindowsScpPath,
+  isHexHubWindowsScpPath,
+} from "./scp-path.js";
 import {
   TunnelBridgeManager,
   createTunnelResultHook,
@@ -15,6 +23,10 @@ import {
 } from "./tunnel-bridge.js";
 import type { HexHubTunnelResultHook } from "./tool-controller.js";
 import { createWindowsFetch as defaultCreateWindowsFetch } from "./windows-fetch.js";
+import {
+  createWindowsScpPathProbe,
+  type HexHubWindowsScpPathProbe,
+} from "./windows-path-probe.js";
 
 export interface HexHubPlatformInfo {
   readonly platform: NodeJS.Platform;
@@ -165,13 +177,10 @@ export type PlatformCommandSpawn = (
 export interface HexHubLocalPathOptions extends DetectHexHubPlatformOptions {
   readonly platformInfo?: HexHubPlatformInfo;
   readonly commandSpawn?: PlatformCommandSpawn;
+  readonly spawn?: PowerShellSpawn;
+  readonly powerShellExecutable?: string;
+  readonly windowsPathProbe?: HexHubWindowsScpPathProbe;
   readonly timeoutMs?: number;
-}
-
-function windowsAbsolute(path: string): boolean {
-  return (
-    /^[A-Za-z]:[\\/]/u.test(path) || /^\\\\(?:\?\\|\.\\|[^\\])/u.test(path)
-  );
 }
 
 function stripPathSigil(path: string): string {
@@ -261,7 +270,11 @@ function runWslPath(
       }
       const decoded = stdout.toString("utf8");
       const result = decoded.trim();
-      if (!result || /[\r\n\0]/u.test(result) || !windowsAbsolute(result)) {
+      if (
+        !result ||
+        /[\r\n\0]/u.test(result) ||
+        !isHexHubWindowsScpPath(result)
+      ) {
         finish(new Error("wslpath returned an invalid Windows path"));
         return;
       }
@@ -274,18 +287,42 @@ export function createHexHubLocalPathHook(
   options: HexHubLocalPathOptions = {},
 ): HexHubLocalPathHook {
   const platform = options.platformInfo ?? detectHexHubPlatform(options);
+  const windowsPathProbe =
+    options.windowsPathProbe ??
+    createWindowsScpPathProbe({
+      ...(options.spawn ? { spawn: options.spawn } : {}),
+      ...(options.powerShellExecutable
+        ? { executable: options.powerShellExecutable }
+        : {}),
+      ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
+    });
+  const prepareWindowsPath = async (
+    value: string,
+    context: HexHubLocalPathContext,
+  ): Promise<string> => {
+    const windowsPath = canonicalHexHubWindowsScpPath(value);
+    await windowsPathProbe(windowsPath, context);
+    return encodeHexHubWindowsScpPath(windowsPath);
+  };
+
   return async (suppliedPath, context) => {
     const path = stripPathSigil(suppliedPath);
     if (!path) throw new Error("HexHub SCP local_path must not be empty");
     if (platform.isWsl) {
-      if (windowsAbsolute(path)) return path;
+      if (isHexHubWindowsScpPath(path))
+        return prepareWindowsPath(path, context);
       const absolute = posix.isAbsolute(path)
         ? posix.normalize(path)
         : posix.resolve(context.cwd, path);
-      return runWslPath(absolute, context.signal, options);
+      const windowsPath = await runWslPath(absolute, context.signal, options);
+      return prepareWindowsPath(windowsPath, context);
     }
-    if (platform.isWindows)
-      return windowsAbsolute(path) ? path : win32.resolve(context.cwd, path);
+    if (platform.isWindows) {
+      const windowsPath = isHexHubWindowsScpPath(path)
+        ? path
+        : win32.resolve(context.cwd, path);
+      return prepareWindowsPath(windowsPath, context);
+    }
     return resolvePath(context.cwd, path);
   };
 }

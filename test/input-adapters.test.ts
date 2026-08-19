@@ -138,10 +138,11 @@ test("SCP local path is transformed only through the injected platform hook", as
     localPath(path, suppliedContext) {
       context = suppliedContext;
       assert.equal(path, "@file.txt");
-      return "D:\\work\\file.txt";
+      return "//?/D:/work/file.txt";
     },
   });
-  assert.equal(prepared.remoteArgs.local_path, "D:\\work\\file.txt");
+  assert.equal(prepared.remoteArgs.local_path, "//?/D:/work/file.txt");
+  assert.equal(prepared.remoteArgs.remote_path, "/tmp/file.txt");
   assert.deepEqual(context, { cwd: "/work", direction: "upload" });
 });
 

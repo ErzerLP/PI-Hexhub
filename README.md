@@ -17,7 +17,7 @@
 | HexHub 领域适配 | 模型需要自行理解每项原始 schema 和资产类型差异 | 针对 SSH、远程文件、Docker、数据库、Redis、SCP、tunnel 和交互终端提供固定分组、简化参数和输入校验 |
 | 文件修改 | 原始写工具可被直接调用 | `write/edit/multi_edit/delete` 要求同一连接代内先读取同一目标，并按资产、容器和路径串行执行 |
 | 工具结果 | 原始 JSON、日志、SQL 行和终端输出可能重复、过长或泄露内部字段 | 按领域选择 head/tail、表格化和分页窗口，实施单工具预算、50 KiB/2000 行总上限及深度脱敏 |
-| Windows/WSL | WSL 通常无法直连仅监听 Windows `127.0.0.1` 的 HexHub MCP 和 SSH tunnel | 自动使用流式 PowerShell `HttpClient` helper；SCP 路径经安全 `wslpath` 转换；Windows tunnel 映射为 WSL 本地 bridge |
+| Windows/WSL | WSL 通常无法直连仅监听 Windows `127.0.0.1` 的 HexHub MCP 和 SSH tunnel | 自动使用流式 PowerShell `HttpClient` helper；SCP 路径经安全 `wslpath`、Windows preflight 和 extended/UNC wire encoding；Windows tunnel 映射为 WSL 本地 bridge |
 | MCP 生命周期 | 通用桥常缺少针对 HexHub session 的恢复和运行时重配置 | single-flight 连接、generation 隔离、失效 session 单次恢复、取消传播、运行时 `/hexhub-config` 重连和有界关闭 |
 | 安全边界 | 项目配置可能改变 endpoint 或把凭据发送到其他地址 | URL/token 仅允许全局配置；受信项目只能配置初始工具组；远端必须 HTTPS，凭据不进入命令参数或诊断输出 |
 
@@ -211,7 +211,9 @@ URL 和 token 不接受 slash-command 参数，避免进入命令历史。明文
 
 PowerShell helper 支持 POST、GET SSE、DELETE、流式响应和取消。URL、headers、token 与 body 通过 stdin 传递，不进入命令行参数。
 
-`hexhub_scp` 在 WSL 中只转换 `local_path`：WSL 路径通过 `wslpath -w -- <path>` 转成 Windows 路径，远端路径保持不变。
+`hexhub_scp` 只转换 `local_path`，远端 `remote_path` 保持不变。WSL 路径先通过 `wslpath -w -- <path>` 转成 Windows 路径，再在 Windows 视角检查上传源或下载目标父目录；盘符路径编码为 `//?/X:/...`，UNC/WSL 路径编码为 `//server/share/...`，以兼容 HexHub 5.3.9 的双层路径校验。用户仍填写普通 WSL 或 Windows 路径，不需要手工输入 wire path。
+
+HexHub 接收 SCP 后可能只返回 `queued`。扩展会明确报告“已排队，尚未确认完成”；只有服务端明确返回 `completed` 时才报告完成。
 
 HexHub 创建的 SSH tunnel 监听 Windows loopback。扩展在 WSL 中创建 `127.0.0.1` 本地桥，并通过按连接启动的 PowerShell 二进制 relay 转发到 Windows 端口。模型只看到 Pi 实际可访问的 WSL 地址。
 
@@ -234,7 +236,7 @@ npm run check
 npm pack --dry-run
 ```
 
-测试覆盖配置边界、MCP session 恢复、24 项目录兼容性、短资产键、输入适配、结果预算、渐进激活、Windows/WSL fetch、tunnel relay 和完整 Pi 生命周期。
+测试覆盖配置边界、MCP session 恢复、24 项目录兼容性、短资产键、输入适配、结果预算、渐进激活、Windows/WSL fetch、SCP extended/UNC 路径与 queued 语义、tunnel relay 和完整 Pi 生命周期。
 
 Pi 原生 loader 检查：
 

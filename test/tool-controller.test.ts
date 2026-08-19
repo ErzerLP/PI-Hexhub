@@ -325,7 +325,7 @@ test("platform path and tunnel hooks are injectable and config hooks refresh/res
     localPath(path, context) {
       assert.equal(path, "local.txt");
       assert.equal(context.cwd, "/work");
-      return "D:\\work\\local.txt";
+      return "//?/D:/work/local.txt";
     },
     tunnelResult(context) {
       tunnelHookCalls += 1;
@@ -348,7 +348,7 @@ test("platform path and tunnel hooks are injectable and config hooks refresh/res
     remote_path: "/tmp/local.txt",
   });
   const scp = client.calls.find((call) => call.name === "scp_transfer")!;
-  assert.equal(scp.args.local_path, "D:\\work\\local.txt");
+  assert.equal(scp.args.local_path, "//?/D:/work/local.txt");
 
   const tunnel = await execute(pi, "hexhub_tunnel_open", {
     asset: "ssh:1",

@@ -351,8 +351,34 @@ function formatRedis(payload: unknown): string {
   return Array.isArray(value) ? table(value) : stringify(value);
 }
 
-function formatTransfer(prepared: HexHubPreparedInput): string {
-  return `SCP ${scalar(prepared.remoteArgs.direction)} completed: ${scalar(prepared.remoteArgs.remote_path)}.`;
+function transferTaskSuffix(payload: unknown): string {
+  const taskId = firstString(payload, ["task_id", "taskId"]);
+  return taskId && /^[A-Za-z0-9._:-]{1,128}$/u.test(taskId)
+    ? ` [task_id=${taskId}]`
+    : "";
+}
+
+function formatTransfer(
+  payload: unknown,
+  prepared: HexHubPreparedInput,
+): string {
+  const direction = scalar(prepared.remoteArgs.direction);
+  const remotePath = scalar(prepared.remoteArgs.remote_path);
+  const summary = `SCP ${direction} for ${remotePath}`;
+  const suffix = transferTaskSuffix(payload);
+  const status = firstString(payload, ["status", "state"])?.toLowerCase();
+  switch (status) {
+    case "queued":
+      return `${summary} queued by HexHub; completion is not confirmed.${suffix}`;
+    case "running":
+      return `${summary} is running; completion is not confirmed.${suffix}`;
+    case "completed":
+      return `${summary} completed.${suffix}`;
+    case "failed":
+      return `${summary} failed.${suffix}`;
+    default:
+      return `${summary} was accepted by HexHub; completion status is unknown.${suffix}`;
+  }
 }
 
 function formatTunnel(payload: unknown): string {
@@ -416,7 +442,7 @@ function formatPolicy(
     case "redis":
       return formatRedis(payload);
     case "transfer":
-      return formatTransfer(options.prepared);
+      return formatTransfer(payload, options.prepared);
     case "tunnel":
       return formatTunnel(payload);
     case "terminal":

@@ -233,11 +233,14 @@ WSL fallback 不要求管理员权限、Windows 防火墙规则或 `netsh portpr
 
 只有 `scp_transfer.local_path` 表示 HexHub 所在机器的本地路径，需要平台转换：
 
-- WSL `/mnt/c/...`、`/mnt/d/...` 通过 `wslpath -w` 转为盘符路径。
-- WSL Linux 文件通过 `wslpath -w` 转为 `\\wsl.localhost\<distro>\...`，并在调用前验证 Windows 侧可访问。
-- Windows Pi 使用 `path.win32.resolve`。
+- WSL `/mnt/c/...`、`/mnt/d/...` 先通过 `wslpath -w` 转为盘符路径，再编码为 `//?/X:/...`。
+- WSL Linux 文件通过 `wslpath -w` 转为 `\\wsl.localhost\<distro>\...`，再编码为 `//wsl.localhost/<distro>/...`。
+- Windows Pi 使用 `path.win32.resolve`，规范化后采用同一 extended/UNC wire encoding。
+- 上传前在 Windows 视角确认源文件或目录存在；下载前确认目标父目录存在。路径通过静态 PowerShell helper 的 stdin JSON 传递，不进入 argv 或脚本文本。
 - 相对路径从 `ctx.cwd` 解析；支持去掉一个前导 `@`。
+- 规范化必须先于 `//?/` 编码，并拒绝 drive-relative、named pipe、`GLOBALROOT`、CR/LF/NUL 等不安全路径。
 - SSH/Docker 的 `file_path` 是远端路径，绝不能做 Windows/WSL 转换。
+- SCP 响应中的 `queued` 只表示进入 HexHub 传输队列；仅明确 `completed` 才能报告完成。
 
 ### 12.4 WSL SSH 隧道
 
