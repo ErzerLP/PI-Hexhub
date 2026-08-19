@@ -20,18 +20,16 @@ const HEXHUB_539_TOOLS = JSON.parse(
   ),
 ) as RemoteToolDefinition[];
 
+const CURRENT_REDIS_TOOL = JSON.parse(
+  readFileSync(
+    new URL("./fixtures/hexhub-current-redis-tool.json", import.meta.url),
+    "utf8",
+  ),
+) as RemoteToolDefinition;
+
 function remoteTools(includeRedis = false): RemoteToolDefinition[] {
   const tools = clone(HEXHUB_539_TOOLS);
-  if (includeRedis) {
-    const redis = HEXHUB_TOOL_SPECS.find(
-      (spec) => spec.remoteName === "redis_command",
-    );
-    assert.ok(redis);
-    tools.push({
-      name: redis.remoteName,
-      inputSchema: clone(redis.reviewedRemoteSchema),
-    });
-  }
+  if (includeRedis) tools.push(clone(CURRENT_REDIS_TOOL));
   return tools;
 }
 
@@ -43,6 +41,13 @@ test("the 23-tool 5.3.9 baseline is compatible and Redis is merely unavailable",
   assert.deepEqual(diagnostics.unknown, []);
   assert.equal(diagnostics.tools.get("shell")?.status, "available");
   assert.match(diagnostics.fingerprint, /^[a-f0-9]{20}$/);
+});
+
+test("the updated server Redis schema is compatible", () => {
+  const diagnostics = analyzeHexHubCatalog(remoteTools(true), 8);
+  assert.deepEqual(diagnostics.unavailable, []);
+  assert.deepEqual([...diagnostics.incompatible], []);
+  assert.equal(diagnostics.tools.get("redis_command")?.status, "available");
 });
 
 test("description drift and added optional fields remain compatible", () => {

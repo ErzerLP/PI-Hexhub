@@ -87,14 +87,13 @@ test("model schemas use asset and container without exposing remote selector fie
   assert.equal(pattern.default, "");
 });
 
-test("redis schema is present with the recovered 5.3.9 contract", () => {
+test("redis schema matches the updated server contract", () => {
   const redis = HEXHUB_TOOL_SPECS.find(
     (spec) => spec.remoteName === "redis_command",
   )!;
   const remote = redis.reviewedRemoteSchema as {
     properties: Record<string, unknown>;
     required: string[];
-    additionalProperties: boolean;
   };
   assert.deepEqual(Object.keys(remote.properties).sort(), [
     "asset_ref",
@@ -104,7 +103,7 @@ test("redis schema is present with the recovered 5.3.9 contract", () => {
     "timeout",
   ]);
   assert.deepEqual([...remote.required].sort(), ["asset_ref", "command"]);
-  assert.equal(remote.additionalProperties, false);
+  assert.equal("additionalProperties" in remote, false);
   const model = redis.parameters as unknown as {
     properties: Record<string, unknown>;
     required: string[];

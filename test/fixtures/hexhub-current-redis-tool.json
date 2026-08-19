@@ -1,0 +1,29 @@
+{
+  "name": "redis_command",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "asset_ref": {
+        "type": "string"
+      },
+      "command": {
+        "type": "string"
+      },
+      "db": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": {
+        "type": "string"
+      },
+      "timeout": {
+        "minimum": 1,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "asset_ref",
+      "command"
+    ]
+  }
+}

@@ -219,7 +219,7 @@ const terminalExpectSchema = object({
 });
 
 function cloneSchema(schema: TSchema): Record<string, unknown> {
-  return JSON.parse(JSON.stringify(schema)) as Record<string, unknown>;
+  return structuredClone(schema) as Record<string, unknown>;
 }
 
 function stripAdditionalProperties(value: unknown): void {
@@ -467,7 +467,6 @@ export const HEXHUB_TOOL_SPECS = Object.freeze([
     parameters: redisSchema,
     risk: "mutate",
     resultPolicy: "redis",
-    remoteAdditionalProperties: false,
   }),
   spec({
     name: "hexhub_scp",
