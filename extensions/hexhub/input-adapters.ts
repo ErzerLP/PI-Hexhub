@@ -143,12 +143,17 @@ export async function prepareHexHubInput(
     delete remoteArgs.asset;
   }
 
-  if (context.spec.containerField && remoteArgs.container !== undefined) {
+  const containerSelector = remoteArgs.container;
+  const hasContainerSelector =
+    containerSelector !== undefined &&
+    containerSelector !== null &&
+    (typeof containerSelector !== "string" || containerSelector.trim() !== "");
+  if (context.spec.containerField && hasContainerSelector) {
     if (!asset)
       throw new Error("Select a HexHub asset before selecting a container.");
     selectedContainer = context.registry.resolveContainer(
       asset,
-      remoteArgs.container,
+      containerSelector,
     );
     delete remoteArgs.container;
     remoteArgs[context.spec.containerField] =

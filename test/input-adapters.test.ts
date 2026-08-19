@@ -48,6 +48,17 @@ test("asset and container selectors adapt to each exact remote field", async () 
     command: "pwd",
   });
 
+  const sshShell = await prepareHexHubInput({
+    spec: spec("shell"),
+    params: { asset: "ssh:1", container: "", command: "hostname" },
+    registry: assets,
+    cwd: "/tmp",
+  });
+  assert.deepEqual(sshShell.remoteArgs, {
+    asset_ref: "ssh-private",
+    command: "hostname",
+  });
+
   const logs = await prepareHexHubInput({
     spec: spec("docker_container_logs"),
     params: { asset: "dock", container: "api" },
@@ -68,13 +79,28 @@ test("asset and container selectors adapt to each exact remote field", async () 
     }),
     /container is required/,
   );
+  await assert.rejects(
+    prepareHexHubInput({
+      spec: spec("shell"),
+      params: { asset: "docker:1", container: "  ", command: "pwd" },
+      registry: assets,
+      cwd: "/tmp",
+    }),
+    /container is required/,
+  );
 });
 
 test("read offset and limit stay local and list_assets gets an empty pattern", async () => {
   const assets = registry();
   const read = await prepareHexHubInput({
     spec: spec("read"),
-    params: { asset: "ssh:1", file_path: "/etc/app", offset: 10, limit: 20 },
+    params: {
+      asset: "ssh:1",
+      container: "  ",
+      file_path: "/etc/app",
+      offset: 10,
+      limit: 20,
+    },
     registry: assets,
     cwd: "/tmp",
   });

@@ -236,7 +236,13 @@ test("remote execution passes signal, maps refs, enforces read-before-write, and
   const read = await execute(
     pi,
     "hexhub_read",
-    { asset: "ssh:1", file_path: "/etc/app", offset: 2, limit: 1 },
+    {
+      asset: "ssh:1",
+      container: "",
+      file_path: "/etc/app",
+      offset: 2,
+      limit: 1,
+    },
     abort.signal,
   );
   assert.equal(read.content[0].text, "two\n\n[lines 2-2 of 3]");
