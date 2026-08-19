@@ -40,6 +40,16 @@ const COMMAND_ARGUMENTS = [
   "clear",
 ] as const;
 
+const COMMAND_DESCRIPTIONS: Record<(typeof COMMAND_ARGUMENTS)[number], string> =
+  {
+    show: "显示当前配置、默认值和连接状态",
+    test: "使用独立会话测试连接和资产读取",
+    reconnect: "重新连接并刷新工具权限目录",
+    tools: "显示工具组、权限和兼容性状态",
+    "reset-tools": "恢复引导工具和初始工具组",
+    clear: "清除全局连接配置并停用工具",
+  };
+
 type RuntimeUiContext = Pick<ExtensionContext, "hasUI" | "ui"> & {
   readonly signal?: AbortSignal;
 };
@@ -290,7 +300,7 @@ export class HexHubRuntime {
         this.setConnectedStatus(ctx);
         if (bridgeError !== undefined && ctx.hasUI) {
           ctx.ui.notify(
-            `HexHub tunnel cleanup warning: ${this.safeError(bridgeError)}`,
+            `HexHub 隧道清理警告：${this.safeError(bridgeError)}`,
             "warning",
           );
         }
@@ -317,14 +327,14 @@ export class HexHubRuntime {
     this.setConnectingStatus(ctx);
     return this.enqueue(async () => {
       if (!this.isCurrent(version))
-        return "HexHub reconnect was superseded by a configuration change.";
+        return "HexHub 重新连接已被更新的配置替代。";
       if (!this.currentConfig)
-        throw new Error("HexHub is not configured. Run /hexhub-config.");
+        throw new Error("HexHub 尚未配置，请先运行 /hexhub-config。");
       try {
         await this.controller.refreshAfterReconnect(signal);
         if (!this.isCurrent(version)) {
           this.controller.disable();
-          return "HexHub reconnect was superseded by a configuration change.";
+          return "HexHub 重新连接已被更新的配置替代。";
         }
         this.setConnectedStatus(ctx);
         return this.controller.toolsReport();
@@ -370,18 +380,18 @@ export class HexHubRuntime {
           { pattern: "" },
           signal,
         );
-        if (probe.isError) throw new Error("HexHub asset probe failed");
+        if (probe.isError) throw new Error("HexHub 资产读取探测失败");
       }
       const server = [status.serverName ?? "unknown", status.serverVersion]
         .filter(Boolean)
         .join(" ");
       return {
-        summary: "HexHub connection test passed.",
+        summary: "HexHub 连接测试通过。",
         details: [
-          `Server: ${boundedText(server)}`,
-          `Transport: ${status.transport ?? "unknown"}`,
-          `Known tools: available ${available}; unavailable ${unavailable}; incompatible ${incompatible}; unknown ${diagnostics.unknown.length}`,
-          `Platform: ${this.platform.info.platform}; Windows ${this.platform.info.isWindows ? "yes" : "no"}; WSL ${this.platform.info.isWsl ? "yes" : "no"}`,
+          `服务端：${boundedText(server)}`,
+          `传输方式：${status.transport ?? "未知"}`,
+          `已审查工具：可用 ${available}；无权限或不存在 ${unavailable}；不兼容 ${incompatible}；未知 ${diagnostics.unknown.length}`,
+          `运行平台：${this.platform.info.platform}；Windows ${this.platform.info.isWindows ? "是" : "否"}；WSL ${this.platform.info.isWsl ? "是" : "否"}`,
         ],
       };
     } finally {
@@ -452,7 +462,7 @@ export class HexHubRuntime {
     type: "warning" | "error" = "error",
   ): void {
     if (!ctx.hasUI) return;
-    ctx.ui.notify(`HexHub: ${this.safeError(error)}`, type);
+    ctx.ui.notify(`HexHub：${this.safeError(error)}`, type);
   }
 
   private async deactivateAfterLoadFailure(
@@ -490,7 +500,7 @@ export class HexHubRuntime {
   }
 
   private assertRunning(): void {
-    if (this.stopped) throw new Error("HexHub runtime is shut down");
+    if (this.stopped) throw new Error("HexHub 运行时已关闭");
   }
 
   private rememberContext(ctx: RuntimeUiContext): void {
@@ -498,18 +508,18 @@ export class HexHubRuntime {
   }
 
   private setConnectingStatus(ctx: RuntimeUiContext): void {
-    ctx.ui.setStatus(HEXHUB_STATUS_KEY, "HexHub: connecting");
+    ctx.ui.setStatus(HEXHUB_STATUS_KEY, "HexHub：正在连接");
   }
 
   private setConnectedStatus(ctx: RuntimeUiContext): void {
     ctx.ui.setStatus(
       HEXHUB_STATUS_KEY,
-      `HexHub: connected · ${availableReviewedCount(this.controller)} tools`,
+      `HexHub：已连接 · ${availableReviewedCount(this.controller)} 个工具`,
     );
   }
 
   private setErrorStatus(ctx: RuntimeUiContext): void {
-    ctx.ui.setStatus(HEXHUB_STATUS_KEY, "HexHub: connection error");
+    ctx.ui.setStatus(HEXHUB_STATUS_KEY, "HexHub：连接错误");
   }
 
   private clearStatus(ctx: RuntimeUiContext | undefined): void {
@@ -525,7 +535,7 @@ export class HexHubRuntime {
     this.deprecatedWarningShown = true;
     if (ctx.hasUI) {
       ctx.ui.notify(
-        `HexHub ignored deprecated config keys: ${loaded.deprecatedKeys.join(", ")}`,
+        `HexHub 已忽略旧版配置项：${loaded.deprecatedKeys.join(", ")}`,
         "warning",
       );
     }
@@ -555,7 +565,7 @@ export class HexHubRuntime {
         /(["']?(?:asset_ref|session_id|sessionId|token)["']?\s*[:=]\s*)["']?[^\s,"';}]+["']?/giu,
         "$1[redacted]",
       );
-    return boundedText(message || "operation failed");
+    return boundedText(message || "操作失败");
   }
 }
 
@@ -566,13 +576,17 @@ export function installHexHubExtension(
   const runtime = new HexHubRuntime(pi, dependencies);
 
   pi.registerCommand("hexhub-config", {
-    description: "Configure and inspect the HexHub MCP connection",
+    description: "配置、测试并检查 HexHub MCP 连接",
     getArgumentCompletions(prefix) {
       const matches = COMMAND_ARGUMENTS.filter((value) =>
         value.startsWith(prefix),
       );
       return matches.length > 0
-        ? matches.map((value) => ({ value, label: value }))
+        ? matches.map((value) => ({
+            value,
+            label: value,
+            description: COMMAND_DESCRIPTIONS[value],
+          }))
         : null;
     },
     handler: async (args, ctx) => {

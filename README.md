@@ -98,8 +98,8 @@ http://127.0.0.1:17321/mcp
 /hexhub-config clear
 ```
 
-- 无参数：交互修改 URL、transport、timeout、认证和初始工具组，保存后立即重连。
-- `show`：显示脱敏后的生效配置与连接状态。
+- 无参数：打开中文交互配置向导。开始时会汇总全部默认值和当前值，每个输入步骤也会标明当前值、默认值、留空行为与必要的安全说明；保存后立即重连。
+- `show`：用中文显示当前配置、每项默认值、配置来源与连接状态。
 - `test`：使用独立临时 MCP session 执行 initialize、`tools/list` 和一次只读 `list_assets` 探测，不影响当前 session。
 - `reconnect`：重建 MCP session、刷新目录并撤销失效工具。
 - `tools`：显示 active、unavailable、incompatible 和 report-only unknown 工具。

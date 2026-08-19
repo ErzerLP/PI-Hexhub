@@ -398,11 +398,20 @@ function assertToolRegistration(pi: FakePi): void {
 function assertCommandRegistration(pi: FakePi): void {
   assert.equal(pi.commands.size, 1);
   const command = pi.commands.get("hexhub-config")!;
+  assert.match(command.description, /配置.*HexHub MCP/u);
+  const completions = command.getArgumentCompletions("") as Array<{
+    value: string;
+    description?: string;
+  }>;
   assert.deepEqual(
-    command
-      .getArgumentCompletions("")
-      .map((item: { value: string }) => item.value),
+    completions.map((item) => item.value),
     ["show", "test", "reconnect", "tools", "reset-tools", "clear"],
+  );
+  assert.equal(
+    completions.every((item) =>
+      /[\p{Script=Han}]/u.test(item.description ?? ""),
+    ),
+    true,
   );
 }
 
@@ -418,9 +427,9 @@ function assertStartedEntry(
     "hexhub_assets",
     "hexhub_shell",
   ]);
-  assert.equal(state.statuses.get("hexhub"), "HexHub: connected · 24 tools");
+  assert.equal(state.statuses.get("hexhub"), "HexHub：已连接 · 24 个工具");
   assert.equal(
-    state.notices.filter((notice) => notice.message.includes("deprecated"))
+    state.notices.filter((notice) => notice.message.includes("旧版配置项"))
       .length,
     1,
   );
@@ -436,7 +445,7 @@ async function exerciseManagementCommands(
   await command.handler("tools", state.context);
   assert.match(
     state.notices.at(-1)?.message ?? "",
-    /Registered reviewed remote tools: 24/,
+    /已注册并审查的远端工具：24 项/u,
   );
   await command.handler("reset-tools", state.context);
   assert.ok(pi.active.includes("hexhub_shell"));
@@ -464,7 +473,7 @@ async function verifyIdempotentShutdown(
   assert.equal(platform.closeCount, 1);
   assert.deepEqual(pi.active, ["read"]);
   assert.equal(state.statuses.get("hexhub"), undefined);
-  assert.throws(() => runtime.reload(value, state.context), /shut down/);
+  assert.throws(() => runtime.reload(value, state.context), /已关闭/u);
 }
 
 test("entry registers 25 static tools and one command, then session_start connects safely", async () => {
@@ -490,7 +499,7 @@ test("entry registers 25 static tools and one command, then session_start connec
 
   await runtime.reload(value, state.context);
   assert.equal(
-    state.notices.filter((notice) => notice.message.includes("deprecated"))
+    state.notices.filter((notice) => notice.message.includes("旧版配置项"))
       .length,
     1,
   );
@@ -516,7 +525,7 @@ test("connection failure leaves only the loader and does not poison later reload
   await pi.emit("session_start", { reason: "startup" }, state.context);
   assert.equal(runtime.getStatus().state, "error");
   assert.deepEqual(managedActive(pi), ["hexhub_tools"]);
-  assert.equal(state.statuses.get("hexhub"), "HexHub: connection error");
+  assert.equal(state.statuses.get("hexhub"), "HexHub：连接错误");
   const warning = state.notices.at(-1)?.message ?? "";
   assert.doesNotMatch(warning, /top-secret-token|private-ref/);
   assert.match(warning, /\[redacted\]/);
@@ -531,7 +540,7 @@ test("connection failure leaves only the loader and does not poison later reload
   assert.equal(runtime.getStatus().state, "connected");
   assert.equal(factory.instances[0]?.configuredUrl, online.config.url);
   assert.ok(pi.active.includes("hexhub_read"));
-  assert.equal(state.statuses.get("hexhub"), "HexHub: connected · 24 tools");
+  assert.equal(state.statuses.get("hexhub"), "HexHub：已连接 · 24 个工具");
 });
 
 test("concurrent reloads stay serialized and only the latest config activates tools", async () => {
@@ -577,7 +586,7 @@ test("concurrent reloads stay serialized and only the latest config activates to
   assert.equal(main.configuredUrl, latest.config.url);
   assert.equal(pi.active.includes("hexhub_shell"), false);
   assert.equal(pi.active.includes("hexhub_read"), true);
-  assert.equal(state.statuses.get("hexhub"), "HexHub: connected · 24 tools");
+  assert.equal(state.statuses.get("hexhub"), "HexHub：已连接 · 24 个工具");
 });
 
 test("reconnect preserves valid loaded groups and revokes newly unavailable tools", async () => {
@@ -602,7 +611,7 @@ test("reconnect preserves valid loaded groups and revokes newly unavailable tool
   assert.equal(pi.active.includes("hexhub_read"), true);
   assert.ok(pi.active.includes("hexhub_tools"));
   assert.match(JSON.stringify(report), /shell/);
-  assert.equal(state.statuses.get("hexhub"), "HexHub: connected · 23 tools");
+  assert.equal(state.statuses.get("hexhub"), "HexHub：已连接 · 23 个工具");
 });
 
 test("connection test uses an independent client and performs one minimal assets probe", async () => {
@@ -630,17 +639,14 @@ test("connection test uses an independent client and performs one minimal assets
   assert.equal(main.getGeneration(), generation);
   assert.equal(main.connectCount, mainConnects);
   const serialized = JSON.stringify(report);
-  assert.match(serialized, /Server: fake-hexhub 5\.3\.9/);
-  assert.match(serialized, /Transport: direct/);
-  assert.match(
-    serialized,
-    /available 24; unavailable 0; incompatible 0; unknown 1/,
-  );
-  assert.match(serialized, /WSL yes/);
+  assert.match(serialized, /服务端：fake-hexhub 5\.3\.9/u);
+  assert.match(serialized, /传输方式：direct/u);
+  assert.match(serialized, /可用 24；无权限或不存在 0；不兼容 0；未知 1/u);
+  assert.match(serialized, /WSL 是/u);
   assert.doesNotMatch(serialized, /private-ref|private-id|asset_ref|session/);
 
   factory.probeError = true;
-  await assert.rejects(runtime.testConnection(value), /asset probe failed/);
+  await assert.rejects(runtime.testConnection(value), /资产读取探测失败/u);
   assert.equal(factory.instances[2]?.closeCount, 1);
 });
 

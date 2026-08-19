@@ -210,7 +210,9 @@ test("wizard saves and awaits runtime reload; slash arguments cannot contain sec
   };
   const events: string[] = [];
   const inputValues = ["https://hexhub.example", "4500", "shell,files-read"];
-  const selectValues = ["direct", "No authentication"];
+  const selectPatterns = [/直接连接.*direct/u, /不使用认证/u];
+  const inputPrompts: Array<{ title: string; placeholder?: string }> = [];
+  const selectPrompts: Array<{ title: string; options: string[] }> = [];
   let savedConfig: HexHubConfig | undefined;
   const notices: string[] = [];
   const ctx = {
@@ -218,8 +220,15 @@ test("wizard saves and awaits runtime reload; slash arguments cannot contain sec
     hasUI: true,
     isProjectTrusted: () => true,
     ui: {
-      input: async () => inputValues.shift(),
-      select: async () => selectValues.shift(),
+      input: async (title: string, placeholder?: string) => {
+        inputPrompts.push({ title, placeholder });
+        return inputValues.shift();
+      },
+      select: async (title: string, options: string[]) => {
+        selectPrompts.push({ title, options });
+        const pattern = selectPatterns.shift();
+        return options.find((option) => pattern?.test(option));
+      },
       confirm: async () => true,
       notify: (message: string) => notices.push(message),
     },
@@ -241,6 +250,19 @@ test("wizard saves and awaits runtime reload; slash arguments cannot contain sec
   assert.deepEqual(events, ["save", "reload-start", "reload-end"]);
   assert.equal(savedConfig?.transport, "direct");
   assert.deepEqual(savedConfig?.initialGroups, ["shell", "files-read"]);
+  assert.match(notices[0] ?? "", /HexHub 配置向导/u);
+  assert.match(notices[0] ?? "", /默认值：/u);
+  assert.match(notices[0] ?? "", /30000 毫秒/u);
+  assert.match(inputPrompts[0]?.title ?? "", /MCP 地址/u);
+  assert.match(inputPrompts[0]?.placeholder ?? "", /当前值：.*默认值：/u);
+  assert.match(inputPrompts[1]?.title ?? "", /超时/u);
+  assert.match(inputPrompts[1]?.placeholder ?? "", /当前值：.*默认值：/u);
+  assert.match(inputPrompts[2]?.title ?? "", /初始工具组/u);
+  assert.match(inputPrompts[2]?.placeholder ?? "", /当前值：.*默认值：/u);
+  assert.match(selectPrompts[0]?.title ?? "", /传输方式/u);
+  assert.match(selectPrompts[0]?.options.join("\n") ?? "", /当前值/u);
+  assert.match(selectPrompts[0]?.options.join("\n") ?? "", /默认值/u);
+  assert.match(selectPrompts[1]?.title ?? "", /认证方式.*默认/u);
 
   await runHexHubConfigCommand("token super-secret", ctx, {
     load: async () => {
@@ -252,7 +274,129 @@ test("wizard saves and awaits runtime reload; slash arguments cannot contain sec
     notices.some((message) => message.includes("super-secret")),
     false,
   );
-  assert.match(notices.at(-1) ?? "", /Usage/);
+  assert.match(notices.at(-1) ?? "", /用法/u);
+});
+
+test("wizard documents defaults and blank input preserves every current text value", async () => {
+  const current: HexHubConfig = {
+    ...DEFAULT_HEXHUB_CONFIG,
+    url: "https://current.example/mcp",
+    transport: "windows-helper",
+    timeoutMs: 4_500,
+    auth: { type: "none" },
+    initialGroups: ["shell", "files-read"],
+  };
+  let saved: HexHubConfig | undefined;
+  const notices: string[] = [];
+  const ctx = {
+    cwd: "/tmp/project",
+    hasUI: true,
+    isProjectTrusted: () => true,
+    ui: {
+      input: async () => "",
+      select: async (_title: string, options: string[]) => options[0],
+      confirm: async () => true,
+      notify: (message: string) => notices.push(message),
+    },
+  };
+
+  await runHexHubConfigCommand("", ctx, {
+    load: async () => loaded(current),
+    save: async (config) => {
+      saved = config;
+      return loaded(config);
+    },
+    reload: async () => undefined,
+  });
+
+  assert.deepEqual(saved, current);
+  assert.match(notices[0] ?? "", /当前值：/u);
+  assert.match(notices[0] ?? "", /默认值：/u);
+  assert.match(notices[0] ?? "", /shell（远程命令）/u);
+  assert.match(notices.at(-1) ?? "", /已立即生效/u);
+});
+
+test("show command uses Chinese labels and includes current and default values", async () => {
+  const notices: string[] = [];
+  const current: HexHubConfig = {
+    ...DEFAULT_HEXHUB_CONFIG,
+    transport: "direct",
+    timeoutMs: 4_500,
+    auth: {
+      type: "env",
+      env: "HEXHUB_TEST_TOKEN",
+      header: "x-hexhub-token",
+    },
+    initialGroups: ["database-meta"],
+  };
+  const ctx = {
+    cwd: "/tmp/project",
+    hasUI: true,
+    isProjectTrusted: () => true,
+    ui: {
+      input: async () => undefined,
+      select: async () => undefined,
+      confirm: async () => false,
+      notify: (message: string) => notices.push(message),
+    },
+  };
+
+  await runHexHubConfigCommand("show", ctx, {
+    load: async () => loaded(current),
+    reload: async () => undefined,
+    getStatus: () => ({
+      state: "connected",
+      connected: true,
+      transport: "direct",
+      catalogEpoch: 3,
+      remoteToolCount: 23,
+    }),
+  });
+
+  const output = notices.at(-1) ?? "";
+  assert.match(output, /HexHub 当前配置/u);
+  assert.match(output, /MCP 地址：.*默认：/u);
+  assert.match(output, /传输方式：直接连接.*默认：自动选择/u);
+  assert.match(output, /请求超时：4500 毫秒.*默认：30000 毫秒/u);
+  assert.match(
+    output,
+    /认证方式：环境变量 HEXHUB_TEST_TOKEN.*默认：不使用认证/u,
+  );
+  assert.match(output, /初始工具组：database-meta（数据库元数据）.*默认：无/u);
+  assert.match(output, /连接状态：已连接（connected）/u);
+  assert.match(output, /服务端工具：23 项；目录版本：3/u);
+});
+
+test("localized guide and show output never reveal a plaintext token", async () => {
+  const secret = "ui-secret-that-must-not-leak";
+  const current: HexHubConfig = {
+    ...DEFAULT_HEXHUB_CONFIG,
+    auth: { type: "token", token: secret, header: "authorization" },
+    initialGroups: [],
+  };
+  const notices: string[] = [];
+  const ctx = {
+    cwd: "/tmp/project",
+    hasUI: true,
+    isProjectTrusted: () => true,
+    ui: {
+      input: async () => undefined,
+      select: async () => undefined,
+      confirm: async () => false,
+      notify: (message: string) => notices.push(message),
+    },
+  };
+  const hooks = {
+    load: async () => loaded(current),
+    reload: async () => undefined,
+  };
+
+  await runHexHubConfigCommand("", ctx, hooks);
+  await runHexHubConfigCommand("show", ctx, hooks);
+
+  const output = notices.join("\n");
+  assert.doesNotMatch(output, new RegExp(secret, "u"));
+  assert.match(output, /明文 Token \[已隐藏\]/u);
 });
 
 test("wizard rejects remote HTTP before saving or probing for secrets", async () => {
@@ -282,5 +426,5 @@ test("wizard rejects remote HTTP before saving or probing for secrets", async ()
   });
 
   assert.equal(reloaded, false);
-  assert.match(notices.at(-1) ?? "", /must use HTTPS/);
+  assert.match(notices.at(-1) ?? "", /必须使用 HTTPS/u);
 });

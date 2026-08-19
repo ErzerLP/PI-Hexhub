@@ -353,7 +353,10 @@ test("platform path and tunnel hooks are injectable and config hooks refresh/res
   assert.equal(tunnelHookCalls, 1);
 
   const hooks = controller.createConfigHooks();
-  assert.match(hooks.tools().join("\n"), /Unknown remote tools/);
+  assert.match(
+    hooks.tools().join("\n"),
+    /未知工具（仅报告，不自动开放）：future_tool/u,
+  );
   const reset = hooks.resetTools();
   assert.deepEqual(reset, ["hexhub_tools", "hexhub_assets"]);
   assert.deepEqual(pi.active, ["read", "hexhub_tools", "hexhub_assets"]);

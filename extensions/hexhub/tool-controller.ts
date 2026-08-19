@@ -253,12 +253,16 @@ export class HexHubToolController {
     const diagnostics = this.observeCatalog();
     const requested = hexHubToolsInGroups(selected);
     const activeBefore = new Set(this.pi.getActiveTools());
-    const available = requested.filter(
-      (spec) => diagnostics.tools.get(spec.remoteName)?.status === "available",
-    );
-    const activated = available
-      .map((spec) => spec.name)
-      .filter((name) => !activeBefore.has(name));
+    const availableNames: string[] = [];
+    const unavailable: string[] = [];
+    const incompatible: string[] = [];
+    for (const spec of requested) {
+      const status = diagnostics.tools.get(spec.remoteName)?.status;
+      if (status === "available") availableNames.push(spec.name);
+      else if (status === "unavailable") unavailable.push(spec.name);
+      else if (status === "incompatible") incompatible.push(spec.name);
+    }
+    const activated = availableNames.filter((name) => !activeBefore.has(name));
     if (activated.length > 0)
       this.pi.setActiveTools([...new Set([...activeBefore, ...activated])]);
     this.reconcileActiveTools(true);
@@ -266,21 +270,9 @@ export class HexHubToolController {
     return {
       groups: selected,
       activated,
-      active: available
-        .map((spec) => spec.name)
-        .filter((name) => activeSet.has(name)),
-      unavailable: requested
-        .filter(
-          (spec) =>
-            diagnostics.tools.get(spec.remoteName)?.status === "unavailable",
-        )
-        .map((spec) => spec.name),
-      incompatible: requested
-        .filter(
-          (spec) =>
-            diagnostics.tools.get(spec.remoteName)?.status === "incompatible",
-        )
-        .map((spec) => spec.name),
+      active: availableNames.filter((name) => activeSet.has(name)),
+      unavailable,
+      incompatible,
       unknown: diagnostics.unknown,
     };
   }
@@ -332,13 +324,13 @@ export class HexHubToolController {
   toolsReport(): readonly string[] {
     const status = this.getStatus();
     return [
-      `HexHub catalog epoch ${status.epoch}; fingerprint ${status.fingerprint}`,
-      `Registered reviewed remote tools: ${status.registered}`,
-      `Active HexHub tools: ${status.active.join(", ") || "none"}`,
-      `Active groups: ${status.activeGroups.join(", ") || "none"}`,
-      `Unavailable remote tools: ${status.unavailable.join(", ") || "none"}`,
-      `Incompatible remote tools: ${status.incompatible.join(", ") || "none"}`,
-      `Unknown remote tools (report only): ${status.unknown.join(", ") || "none"}`,
+      `HexHub 工具目录：版本 ${status.epoch}；指纹 ${status.fingerprint}`,
+      `已注册并审查的远端工具：${status.registered} 项`,
+      `当前激活的 HexHub 工具：${status.active.join(", ") || "无"}`,
+      `当前激活的工具组：${status.activeGroups.join(", ") || "无"}`,
+      `无权限或服务端未提供：${status.unavailable.join(", ") || "无"}`,
+      `Schema 不兼容：${status.incompatible.join(", ") || "无"}`,
+      `未知工具（仅报告，不自动开放）：${status.unknown.join(", ") || "无"}`,
     ];
   }
 
